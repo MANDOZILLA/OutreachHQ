@@ -39,6 +39,8 @@ export function GET() {
     BREVO_API_KEY: env.BREVO_API_KEY ? maskValue(env.BREVO_API_KEY) : "",
     IMAP_EMAIL: env.IMAP_EMAIL || "",
     IMAP_PASSWORD: env.IMAP_PASSWORD ? maskValue(env.IMAP_PASSWORD) : "",
+    TEST_MODE: env.TEST_MODE || "false",
+    TEST_EMAIL: env.TEST_EMAIL || "",
   });
 }
 
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
   const keysToSave = [
     "SENDER_NAME", "SENDER_EMAIL", "DAILY_EMAIL_LIMIT", "MIN_SCORE_TO_EMAIL",
     "GROQ_API_KEY", "BREVO_API_KEY", "IMAP_EMAIL", "IMAP_PASSWORD",
+    "TEST_MODE", "TEST_EMAIL",
   ];
 
   for (const key of keysToSave) {

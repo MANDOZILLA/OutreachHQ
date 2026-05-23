@@ -31,8 +31,43 @@ export default function SettingsPage() {
   const fieldClass = "px-3.5 py-2.5 bg-bg-elevated border border-border rounded-lg text-[13px] text-txt-primary focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all w-full";
   const labelClass = "text-[10px] font-medium text-txt-muted uppercase tracking-widest";
 
+  const testMode = settings.TEST_MODE === "true";
+
   return (
     <div className="space-y-3 max-w-2xl">
+      <div className={`bg-bg-card border rounded-xl p-5 shadow-card ${testMode ? "border-amber/40" : "border-border-subtle"}`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className={labelClass}>Test mode</div>
+          <button
+            onClick={() => update("TEST_MODE", testMode ? "false" : "true")}
+            className={`w-9 h-5 rounded-full relative cursor-pointer transition-all duration-200 shrink-0 ${
+              testMode ? "bg-amber shadow-[0_0_8px_rgba(245,158,11,0.4)]" : "bg-bg-elevated border border-border-strong"
+            }`}
+          >
+            <span className={`absolute w-3.5 h-3.5 rounded-full top-[3px] transition-all duration-200 ${
+              testMode ? "right-[3px] bg-white" : "left-[3px] bg-txt-muted"
+            }`} />
+          </button>
+        </div>
+        {testMode ? (
+          <>
+            <div className="text-[12px] text-amber mb-3">All outgoing emails will be sent to the test address below instead of real leads.</div>
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Test email recipient</label>
+              <input
+                type="email"
+                value={settings.TEST_EMAIL || ""}
+                onChange={(e) => update("TEST_EMAIL", e.target.value)}
+                placeholder="you@gmail.com"
+                className={fieldClass}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="text-[12px] text-txt-tertiary">When enabled, emails are redirected to a test address instead of real leads. Use this to preview what gets sent.</div>
+        )}
+      </div>
+
       <div className="bg-bg-card border border-border-subtle rounded-xl p-5 shadow-card">
         <div className={`${labelClass} mb-4`}>Email settings</div>
         <div className="grid grid-cols-2 gap-4">

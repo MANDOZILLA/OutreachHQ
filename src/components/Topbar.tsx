@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { IconPlayerPlay, IconRefresh } from "@tabler/icons-react";
-import { useState } from "react";
+import { IconPlayerPlay, IconRefresh, IconTestPipe } from "@tabler/icons-react";
+import { useState, useEffect } from "react";
 
 const titles: Record<string, [string, string]> = {
   "/": ["Overview", "StockSense outreach system"],
@@ -19,6 +19,13 @@ export function Topbar() {
   const router = useRouter();
   const [title, subtitle] = titles[pathname] || ["OutreachHQ", ""];
   const [syncing, setSyncing] = useState(false);
+  const [testMode, setTestMode] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then((s) => {
+      setTestMode(s.TEST_MODE === "true");
+    });
+  }, []);
 
   async function handleSync() {
     setSyncing(true);
@@ -36,6 +43,12 @@ export function Topbar() {
         <div className="text-[11px] text-txt-tertiary mt-0.5">{subtitle}</div>
       </div>
       <div className="flex items-center gap-3">
+        {testMode && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-surface border border-amber/30 rounded-lg">
+            <IconTestPipe size={13} className="text-amber" />
+            <span className="text-[11px] font-medium text-amber">Test mode</span>
+          </div>
+        )}
         <span className="text-[11px] text-txt-muted font-mono">Last run: —</span>
         <button
           onClick={handleSync}
