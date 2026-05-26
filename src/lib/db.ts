@@ -14,6 +14,7 @@ export function getDb(): Database.Database {
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
     initSchema(_db);
+    migrateSchema(_db);
   }
   if (!_seeded) {
     _seeded = true;
@@ -75,5 +76,22 @@ function initSchema(db: Database.Database) {
     insert.run("Follow-up checker", "Daily 10:00am · sends follow-ups after 7 days", "follow_up", "0 10 * * *", 1);
     insert.run("Inbox sync (IMAP)", "Every 30 mins · classifies new replies via Groq", "inbox_sync", "*/30 * * * *", 1);
     insert.run("Weekly report email", "Every Sunday 8:00pm · summary to your inbox", "report", "0 20 * * 0", 0);
+  }
+}
+
+function migrateSchema(db: Database.Database) {
+  const cols: [string, string][] = [
+    ["sequence_step", "INTEGER DEFAULT 0"],
+    ["first_contacted_at", "TEXT"],
+    ["sequence_complete", "INTEGER DEFAULT 0"],
+    ["last_contacted_at", "TEXT"],
+  ];
+  const existing = (
+    db.prepare("PRAGMA table_info(leads)").all() as Array<{ name: string }>
+  ).map((r) => r.name);
+  for (const [col, type] of cols) {
+    if (!existing.includes(col)) {
+      db.exec(`ALTER TABLE leads ADD COLUMN ${col} ${type}`);
+    }
   }
 }

@@ -13,8 +13,28 @@ interface Lead {
   hook_type: string;
   status: string;
   emailed_at: string | null;
+  replied_at: string | null;
   opted_out: number;
   email_body: string | null;
+  sequence_step: number;
+  sequence_complete: number;
+  first_contacted_at: string | null;
+}
+
+function sequenceBadge(lead: Lead): { label: string; cls: string } {
+  if (lead.replied_at) return { label: "Replied ✓", cls: "pill p-green" };
+  if (lead.opted_out === 1) return { label: "Opted out", cls: "pill p-red" };
+  if (lead.sequence_complete === 1 || lead.sequence_step === 3)
+    return { label: "Complete", cls: "pill p-green" };
+  if (lead.sequence_step === 2) return { label: "Email 2 sent", cls: "pill p-blue" };
+  if (lead.sequence_step === 1) return { label: "Email 1 sent", cls: "pill p-amber" };
+  return { label: "Not sent", cls: "pill p-gray" };
+}
+
+function daysSinceContact(iso: string | null): string {
+  if (!iso) return "—";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+  return `${days}d`;
 }
 
 export default function LeadsPage() {
@@ -111,14 +131,14 @@ export default function LeadsPage() {
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="bg-bg-elevated/50">
-              {["Restaurant", "City", "Score", "Tier", "Hook", "Status", "Emailed", "Actions"].map((h) => (
+              {["Restaurant", "City", "Score", "Tier", "Hook", "Status", "Emailed", "Sequence", "Days", "Actions"].map((h) => (
                 <th key={h} className="text-[10px] font-medium text-txt-muted uppercase tracking-widest py-3 px-3.5 text-left border-b border-border">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {leads.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-10 text-txt-tertiary text-sm">No leads found</td></tr>
+              <tr><td colSpan={10} className="text-center py-10 text-txt-tertiary text-sm">No leads found</td></tr>
             ) : (
               leads.map((l) => (
                 <tr key={l.id} className="hover:bg-bg-elevated/30 transition-colors duration-100">
@@ -133,6 +153,10 @@ export default function LeadsPage() {
                     <span className={`pill ${statusColor(l.status)}`}>{statusLabel(l.status)}</span>
                   </td>
                   <td className="py-3 px-3.5 border-b border-border-subtle font-mono text-[12px] text-txt-tertiary">{timeAgo(l.emailed_at)}</td>
+                  <td className="py-3 px-3.5 border-b border-border-subtle">
+                    {(() => { const b = sequenceBadge(l); return <span className={b.cls}>{b.label}</span>; })()}
+                  </td>
+                  <td className="py-3 px-3.5 border-b border-border-subtle font-mono text-[12px] text-txt-tertiary">{daysSinceContact(l.first_contacted_at)}</td>
                   <td className="py-3 px-3.5 border-b border-border-subtle">
                     <div className="flex items-center gap-0.5">
                       <button onClick={() => setEmailModal(l.email_body)} className="p-1.5 hover:bg-bg-elevated rounded-md text-txt-muted hover:text-txt-primary transition-colors" title="View email">

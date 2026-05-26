@@ -48,7 +48,9 @@ export function GET(req: NextRequest) {
 
   const offset = (page - 1) * limit;
   const rows = db.prepare(
-    `SELECT id, name, city, state, score, tier, hook_type, status, emailed_at, replied_at, opted_out, email_body
+    `SELECT id, name, city, state, score, tier, hook_type, status, emailed_at,
+            replied_at, opted_out, email_body,
+            sequence_step, sequence_complete, first_contacted_at
      FROM leads ${where}
      ORDER BY score DESC, created_at DESC
      LIMIT ? OFFSET ?`
