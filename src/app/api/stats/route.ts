@@ -15,6 +15,12 @@ export function GET() {
 
   const replyRate = emailed > 0 ? ((replies / emailed) * 100).toFixed(1) : "0.0";
 
+  // Revenue pipeline — projected MRR from interested leads.
+  // interested × close rate (15%) × plan price ($49/mo).
+  const CLOSE_RATE = 0.15;
+  const PLAN_PRICE = 49;
+  const projectedMrr = Math.round(interested * CLOSE_RATE * PLAN_PRICE);
+
   const hotReplies = db.prepare(`
     SELECT id, name, city, state, hook_type, replied_at, status
     FROM leads
@@ -33,6 +39,9 @@ export function GET() {
     needsInfo,
     notInterested,
     replyRate,
+    projectedMrr,
+    closeRate: CLOSE_RATE,
+    planPrice: PLAN_PRICE,
     hotReplies,
   });
 }

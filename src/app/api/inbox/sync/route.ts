@@ -3,6 +3,8 @@ import { ImapFlow } from "imapflow";
 import { writeLog } from "@/lib/logger";
 import { getDb } from "@/lib/db";
 import { simpleParser } from "mailparser";
+import { classifyReply } from "@/lib/groq";
+import { markRepliedForLead } from "@/lib/sends";
 
 function getImapConfig() {
   return {
@@ -132,19 +134,27 @@ export async function POST() {
           status = "needs_info";
         }
 
+        // Classify reply sentiment via Groq (falls back to a heuristic when
+        // no GROQ_API_KEY is configured).
+        const sentiment = await classifyReply(replyText);
+        writeLog("GROQ", `${lead.name} reply sentiment: ${sentiment}`);
+
         if (status === "opted_out") {
           db.prepare(
             `UPDATE leads SET status = 'replied', reply_text = ?, replied_at = datetime('now'),
-             opted_out = 1, updated_at = datetime('now') WHERE id = ?`
-          ).run(replyText.slice(0, 2000), lead.id);
+             opted_out = 1, sentiment = ?, updated_at = datetime('now') WHERE id = ?`
+          ).run(replyText.slice(0, 2000), sentiment, lead.id);
           writeLog("IMAP", `${lead.name} opted out via reply`);
         } else {
           db.prepare(
             `UPDATE leads SET status = ?, reply_text = ?, replied_at = datetime('now'),
-             updated_at = datetime('now') WHERE id = ?`
-          ).run(status, replyText.slice(0, 2000), lead.id);
+             sentiment = ?, updated_at = datetime('now') WHERE id = ?`
+          ).run(status, replyText.slice(0, 2000), sentiment, lead.id);
           writeLog("IMAP", `Reply from ${lead.name} — classified as ${status}`);
         }
+
+        // Mark this lead's sends as replied (auto-pauses sequence + feeds A/B stats).
+        markRepliedForLead(lead.id);
 
         newReplies++;
       }

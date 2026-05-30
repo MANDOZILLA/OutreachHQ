@@ -26,7 +26,7 @@ export function GET(req: NextRequest) {
   }
 
   const rows = db.prepare(
-    `SELECT id, name, city, state, cuisine, price_level, rating, score, tier, hook_type, hook_text, replied_at, reply_text, status, email_address, email_body, emailed_at, opted_out
+    `SELECT id, name, city, state, cuisine, price_level, rating, score, lead_score, tier, hook_type, hook_text, replied_at, reply_text, status, sentiment, blacklisted, email_address, email_body, emailed_at, opted_out
      FROM leads ${where}
      ORDER BY replied_at DESC`
   ).all(...params);

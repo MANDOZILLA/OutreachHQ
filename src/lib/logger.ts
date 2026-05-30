@@ -3,6 +3,10 @@ import path from "path";
 
 const LOG_PATH = path.join(process.cwd(), "data", "system.log");
 
+function ensureLogDir() {
+  fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
+}
+
 export type LogProcess = "SCRAPER" | "GROQ" | "BREVO" | "IMAP" | "SYSTEM" | "ERROR";
 
 export function writeLog(process: LogProcess, message: string) {
@@ -13,6 +17,7 @@ export function writeLog(process: LogProcess, message: string) {
     second: "2-digit",
   });
   const line = `${ts}  ${process.padEnd(8)} ${message}\n`;
+  ensureLogDir();
   fs.appendFileSync(LOG_PATH, line);
 }
 

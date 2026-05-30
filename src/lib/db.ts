@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "fs";
 import path from "path";
 
 const DB_PATH =
@@ -10,6 +11,9 @@ let _seeded = false;
 
 export function getDb(): Database.Database {
   if (!_db) {
+    // Ensure the data directory exists before opening (better-sqlite3 won't
+    // create it, and a fresh checkout has no data/ dir).
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
@@ -65,7 +69,47 @@ function initSchema(db: Database.Database) {
       next_run TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- Editable follow-up cadence (Sequence builder). Each row is one step in
+    -- the drip sequence; day_offset is days after first contact it should fire.
+    CREATE TABLE IF NOT EXISTS sequence_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      step_index INTEGER NOT NULL,
+      day_offset INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+
+    -- One row per outbound email send. Tracks which A/B subject-line variant
+    -- was used and whether the lead replied, for per-variant reply-rate stats.
+    CREATE TABLE IF NOT EXISTS sends (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL,
+      step_index INTEGER DEFAULT 0,
+      variant TEXT NOT NULL,
+      subject TEXT,
+      sent_at TEXT DEFAULT (datetime('now')),
+      replied INTEGER DEFAULT 0,
+      replied_at TEXT
+    );
+
+    -- Daily Brevo send counter, keyed by calendar day. A node-cron job resets
+    -- (zeroes) the current day's row at midnight.
+    CREATE TABLE IF NOT EXISTS email_quota (
+      day TEXT PRIMARY KEY,
+      sent INTEGER DEFAULT 0
+    );
   `);
+
+  const stepCount = db.prepare("SELECT COUNT(*) as c FROM sequence_steps").get() as { c: number };
+  if (stepCount.c === 0) {
+    const insertStep = db.prepare(
+      "INSERT INTO sequence_steps (step_index, day_offset, label, enabled) VALUES (?, ?, ?, ?)"
+    );
+    insertStep.run(0, 0, "Day 0 — Intro", 1);
+    insertStep.run(1, 3, "Day 3 — Follow-up", 1);
+    insertStep.run(2, 7, "Day 7 — Final nudge", 1);
+  }
 
   const count = db.prepare("SELECT COUNT(*) as c FROM schedules").get() as { c: number };
   if (count.c === 0) {
@@ -85,6 +129,16 @@ function migrateSchema(db: Database.Database) {
     ["first_contacted_at", "TEXT"],
     ["sequence_complete", "INTEGER DEFAULT 0"],
     ["last_contacted_at", "TEXT"],
+    // Reply sentiment from Groq: 'interested' | 'not_now' | 'hard_no'
+    ["sentiment", "TEXT"],
+    // One-click blacklist — excluded from all send queries
+    ["blacklisted", "INTEGER DEFAULT 0"],
+    // Lead-scoring signals + 1–10 score (see lib/scoring.ts)
+    ["has_website", "INTEGER DEFAULT 0"],
+    ["has_phone", "INTEGER DEFAULT 0"],
+    ["has_reviews", "INTEGER DEFAULT 0"],
+    ["uses_competitor_pos", "INTEGER DEFAULT 0"],
+    ["lead_score", "INTEGER"],
   ];
   const existing = (
     db.prepare("PRAGMA table_info(leads)").all() as Array<{ name: string }>
@@ -94,4 +148,56 @@ function migrateSchema(db: Database.Database) {
       db.exec(`ALTER TABLE leads ADD COLUMN ${col} ${type}`);
     }
   }
+
+  backfillLeadScores(db);
+  backfillSentiment(db);
+}
+
+// Backfill 1–10 lead scores for leads created before the scoring feature.
+function backfillLeadScores(db: Database.Database) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { computeLeadScore, deriveSignalsForExistingLead } = require("./scoring");
+  const leads = db
+    .prepare("SELECT id, email_address, rating, hook_text FROM leads WHERE lead_score IS NULL")
+    .all() as Array<{ id: number; email_address: string | null; rating: number | null; hook_text: string | null }>;
+  if (leads.length === 0) return;
+  const update = db.prepare(
+    `UPDATE leads SET has_website = ?, has_phone = ?, has_reviews = ?,
+       uses_competitor_pos = ?, lead_score = ? WHERE id = ?`
+  );
+  const tx = db.transaction(() => {
+    for (const lead of leads) {
+      const s = deriveSignalsForExistingLead(lead);
+      update.run(
+        s.hasWebsite ? 1 : 0,
+        s.hasPhone ? 1 : 0,
+        s.hasReviews ? 1 : 0,
+        s.usesCompetitorPos ? 1 : 0,
+        computeLeadScore(s),
+        lead.id
+      );
+    }
+  });
+  tx();
+}
+
+// Map legacy reply statuses to a sentiment label so existing replies show a
+// badge even though they predate Groq sentiment scoring.
+function backfillSentiment(db: Database.Database) {
+  const map: Record<string, string> = {
+    interested: "interested",
+    needs_info: "not_now",
+    not_interested: "hard_no",
+  };
+  const update = db.prepare("UPDATE leads SET sentiment = ? WHERE id = ?");
+  const rows = db
+    .prepare("SELECT id, status FROM leads WHERE replied_at IS NOT NULL AND sentiment IS NULL")
+    .all() as Array<{ id: number; status: string }>;
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      const sentiment = map[r.status];
+      if (sentiment) update.run(sentiment, r.id);
+    }
+  });
+  tx();
 }
