@@ -11,6 +11,9 @@ interface Stats {
   needsInfo: number;
   notInterested: number;
   replyRate: string;
+  projectedMrr: number;
+  closeRate: number;
+  planPrice: number;
   hotReplies: Array<{
     id: number;
     name: string;
@@ -30,8 +33,8 @@ export default function OverviewPage() {
 
   if (!stats) {
     return (
-      <div className="grid grid-cols-4 gap-3">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-5 gap-3">
+        {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="bg-bg-card rounded-xl p-4 animate-pulse">
             <div className="h-3 w-16 bg-bg-elevated rounded mb-3" />
             <div className="h-7 w-12 bg-bg-elevated rounded mb-2" />
@@ -44,12 +47,13 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {[
           { label: "Total scraped", value: stats.total.toLocaleString(), sub: "all leads", color: "" },
           { label: "Emails sent", value: stats.emailed.toLocaleString(), sub: "total sent", color: "" },
           { label: "Replies", value: stats.replies.toString(), sub: `${stats.replyRate}% reply rate`, color: "text-green" },
           { label: "Interested", value: stats.interested.toString(), sub: "awaiting response", color: "text-accent" },
+          { label: "Projected MRR", value: `$${stats.projectedMrr.toLocaleString()}`, sub: `${stats.interested} × ${Math.round(stats.closeRate * 100)}% × $${stats.planPrice}`, color: "text-green" },
         ].map((s) => (
           <div key={s.label} className="bg-bg-card border border-border-subtle rounded-xl p-4 shadow-card">
             <div className="text-[10px] font-medium text-txt-muted uppercase tracking-widest mb-2">{s.label}</div>

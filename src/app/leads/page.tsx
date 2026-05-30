@@ -2,23 +2,33 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { timeAgo, tierColor, statusColor, statusLabel } from "@/lib/utils";
-import { IconDownload, IconEye, IconBan, IconTrash } from "@tabler/icons-react";
+import { IconDownload, IconEye, IconBan, IconTrash, IconForbid } from "@tabler/icons-react";
 
 interface Lead {
   id: number;
   name: string;
   city: string;
   score: number;
+  lead_score: number | null;
   tier: string;
   hook_type: string;
   status: string;
   emailed_at: string | null;
   replied_at: string | null;
   opted_out: number;
+  blacklisted: number;
+  sentiment: string | null;
   email_body: string | null;
   sequence_step: number;
   sequence_complete: number;
   first_contacted_at: string | null;
+}
+
+function fitColor(score: number | null): string {
+  if (score == null) return "text-txt-muted";
+  if (score >= 8) return "text-green-text";
+  if (score >= 5) return "text-amber-text";
+  return "text-txt-tertiary";
 }
 
 function sequenceBadge(lead: Lead): { label: string; cls: string } {
@@ -67,6 +77,15 @@ export default function LeadsPage() {
   async function handleOptOut(id: number) {
     if (!confirm("Mark this lead as opted out? They will never be emailed again.")) return;
     await fetch(`/api/leads/${id}/optout`, { method: "PATCH" });
+    load();
+  }
+
+  async function handleBlacklist(id: number, blacklisted: number) {
+    await fetch(`/api/leads/${id}/blacklist`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blacklisted: blacklisted ? 0 : 1 }),
+    });
     load();
   }
 
@@ -131,20 +150,30 @@ export default function LeadsPage() {
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="bg-bg-elevated/50">
-              {["Restaurant", "City", "Score", "Tier", "Hook", "Status", "Emailed", "Sequence", "Days", "Actions"].map((h) => (
+              {["Restaurant", "City", "Score", "Fit", "Tier", "Hook", "Status", "Emailed", "Sequence", "Days", "Actions"].map((h) => (
                 <th key={h} className="text-[10px] font-medium text-txt-muted uppercase tracking-widest py-3 px-3.5 text-left border-b border-border">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {leads.length === 0 ? (
-              <tr><td colSpan={10} className="text-center py-10 text-txt-tertiary text-sm">No leads found</td></tr>
+              <tr><td colSpan={11} className="text-center py-10 text-txt-tertiary text-sm">No leads found</td></tr>
             ) : (
               leads.map((l) => (
-                <tr key={l.id} className="hover:bg-bg-elevated/30 transition-colors duration-100">
-                  <td className="py-3 px-3.5 border-b border-border-subtle font-medium text-txt-primary">{l.name}</td>
+                <tr key={l.id} className={`hover:bg-bg-elevated/30 transition-colors duration-100 ${l.blacklisted ? "opacity-50" : ""}`}>
+                  <td className="py-3 px-3.5 border-b border-border-subtle font-medium text-txt-primary">
+                    <span className="flex items-center gap-2">
+                      {l.name}
+                      {l.blacklisted ? <span className="pill p-red">Blacklisted</span> : null}
+                    </span>
+                  </td>
                   <td className="py-3 px-3.5 border-b border-border-subtle text-txt-secondary">{l.city}</td>
                   <td className="py-3 px-3.5 border-b border-border-subtle font-mono text-[12px] text-txt-secondary">{l.score}</td>
+                  <td className="py-3 px-3.5 border-b border-border-subtle">
+                    <span className={`font-mono text-[12px] font-semibold ${fitColor(l.lead_score)}`} title="Lead fit score (1–10)">
+                      {l.lead_score ?? "—"}<span className="text-txt-muted font-normal">/10</span>
+                    </span>
+                  </td>
                   <td className="py-3 px-3.5 border-b border-border-subtle">
                     <span className={`pill ${tierColor(l.tier)}`}>{l.tier ? l.tier.charAt(0).toUpperCase() + l.tier.slice(1) : "—"}</span>
                   </td>
@@ -167,6 +196,13 @@ export default function LeadsPage() {
                           <IconBan size={14} />
                         </button>
                       )}
+                      <button
+                        onClick={() => handleBlacklist(l.id, l.blacklisted)}
+                        className={`p-1.5 rounded-md transition-colors hover:bg-red-surface ${l.blacklisted ? "text-red" : "text-txt-muted hover:text-red"}`}
+                        title={l.blacklisted ? "Remove from blacklist" : "Blacklist — exclude from all sends"}
+                      >
+                        <IconForbid size={14} />
+                      </button>
                       <button onClick={() => setConfirmDelete(l.id)} className="p-1.5 hover:bg-red-surface rounded-md text-txt-muted hover:text-red transition-colors" title="Delete lead">
                         <IconTrash size={14} />
                       </button>

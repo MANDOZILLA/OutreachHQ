@@ -42,14 +42,20 @@ export function GET(req: NextRequest) {
     where += " AND city = ?";
     params.push(city);
   }
+  const blacklisted = url.searchParams.get("blacklisted") || "";
+  if (blacklisted === "1") {
+    where += " AND blacklisted = 1";
+  } else if (blacklisted === "0") {
+    where += " AND blacklisted = 0";
+  }
 
   const countRow = db.prepare(`SELECT COUNT(*) as c FROM leads ${where}`).get(...params) as { c: number };
   const total = countRow.c;
 
   const offset = (page - 1) * limit;
   const rows = db.prepare(
-    `SELECT id, name, city, state, score, tier, hook_type, status, emailed_at,
-            replied_at, opted_out, email_body,
+    `SELECT id, name, city, state, score, lead_score, tier, hook_type, status, emailed_at,
+            replied_at, opted_out, blacklisted, sentiment, email_body,
             sequence_step, sequence_complete, first_contacted_at
      FROM leads ${where}
      ORDER BY score DESC, created_at DESC

@@ -31,6 +31,24 @@ export function statusColor(status: string) {
   }
 }
 
+export function sentimentLabel(s: string | null | undefined) {
+  switch (s) {
+    case "interested": return "Interested";
+    case "not_now": return "Not now";
+    case "hard_no": return "Hard no";
+    default: return "—";
+  }
+}
+
+export function sentimentPill(s: string | null | undefined) {
+  switch (s) {
+    case "interested": return "p-green";
+    case "not_now": return "p-amber";
+    case "hard_no": return "p-red";
+    default: return "p-gray";
+  }
+}
+
 export function statusLabel(status: string) {
   switch (status) {
     case "interested": return "Interested";
