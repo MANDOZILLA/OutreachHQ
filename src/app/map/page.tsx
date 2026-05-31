@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Minimal typings for the CDN-loaded Leaflet global (we only use a few calls).
 interface LeafletMap {
@@ -65,6 +65,17 @@ interface MapData {
   totalStates: number;
 }
 
+// Colors mirror the mockup legend: best sentiment per city.
+const COLOR_INTERESTED = "#7cb842"; // green — has an interested lead
+const COLOR_CONTACTED = "#e8a020"; // amber — contacted, no reply yet
+const COLOR_UNCONTACTED = "#888"; // gray — not yet contacted
+
+function markerColor(p: MapPoint): string {
+  if (p.interested > 0) return COLOR_INTERESTED;
+  if (p.replied > 0) return COLOR_CONTACTED;
+  return COLOR_UNCONTACTED;
+}
+
 export default function MapPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -79,7 +90,7 @@ export default function MapPage() {
   }, []);
 
   useEffect(() => {
-    if (!data || !containerRef.current) return;
+    if (!data || !containerRef.current || error) return;
     let cancelled = false;
 
     loadLeaflet()
@@ -90,18 +101,25 @@ export default function MapPage() {
           mapRef.current = null;
         }
 
-        const map = L.map(containerRef.current, { scrollWheelZoom: true }).setView([39.5, -98.35], 4);
+        const map = L.map(containerRef.current, {
+          scrollWheelZoom: true,
+          attributionControl: false,
+        }).setView([39.5, -96], 4);
         mapRef.current = map;
 
         L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-          attribution: "&copy; OpenStreetMap &copy; CARTO",
           maxZoom: 19,
         }).addTo(map);
 
         for (const p of data.points) {
-          const hasInterest = p.interested > 0;
-          const color = hasInterest ? "#22C55E" : p.replied > 0 ? "#F59E0B" : "#3B82F6";
-          const radius = Math.min(26, 6 + p.count * 2);
+          const color = markerColor(p);
+          const radius = Math.max(6, Math.min(20, Math.sqrt(p.count) * 2.4));
+          const best =
+            p.interested > 0
+              ? `${p.interested} interested`
+              : p.replied > 0
+                ? "contacted"
+                : "queued";
           L.circleMarker([p.lat, p.lng], {
             radius,
             color,
@@ -111,8 +129,8 @@ export default function MapPage() {
           })
             .addTo(map)
             .bindPopup(
-              `<strong>${p.city}</strong><br/>${p.count} lead${p.count === 1 ? "" : "s"}` +
-                `<br/>${p.replied} replied · ${p.interested} interested`
+              `<div class="map-pop-name">${p.city}</div>` +
+                `<div class="map-pop-meta">${p.count} lead${p.count === 1 ? "" : "s"} · ${best}</div>`
             );
         }
       })
@@ -125,39 +143,104 @@ export default function MapPage() {
         mapRef.current = null;
       }
     };
+  }, [data, error]);
+
+  // Derive the top market and untapped (not-contacted) count from the points.
+  const { topMarket, untapped } = useMemo(() => {
+    const points = data?.points ?? [];
+    let top: MapPoint | null = null;
+    let notContacted = 0;
+    for (const p of points) {
+      if (!top || p.count > top.count) top = p;
+      if (p.interested === 0 && p.replied === 0) notContacted += 1;
+    }
+    return { topMarket: top, untapped: notContacted };
   }, [data]);
 
-  const labelClass = "text-[10px] font-medium text-txt-muted uppercase tracking-widest";
-
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Leads mapped", value: data?.totalLeads ?? "—" },
-          { label: "Cities", value: data?.totalCities ?? "—" },
-          { label: "States", value: data?.totalStates ?? "—" },
-        ].map((s) => (
-          <div key={s.label} className="bg-bg-card border border-border-subtle rounded-xl p-4 shadow-card">
-            <div className={`${labelClass} mb-2`}>{s.label}</div>
-            <div className="text-2xl font-semibold font-mono tracking-tight text-txt-primary">{s.value}</div>
+    <div>
+      <div className="stat-row cols4">
+        <div className="stat">
+          <div className="stat-l">States covered</div>
+          <div className="stat-v">{data?.totalStates ?? "—"}</div>
+          <div className="stat-s">of 50</div>
+        </div>
+        <div className="stat">
+          <div className="stat-l">Cities</div>
+          <div className="stat-v">{data?.totalCities ?? "—"}</div>
+          <div className="stat-s">with ≥1 lead</div>
+        </div>
+        {topMarket ? (
+          <div className="stat featured">
+            <div className="stat-l">Top market</div>
+            <div className="stat-v" style={{ fontSize: 18 }}>
+              {topMarket.city}
+            </div>
+            <div className="stat-s">
+              {topMarket.count} lead{topMarket.count === 1 ? "" : "s"}
+            </div>
           </div>
-        ))}
+        ) : (
+          <div className="stat">
+            <div className="stat-l">Top market</div>
+            <div className="stat-v">—</div>
+            <div className="stat-s">no leads yet</div>
+          </div>
+        )}
+        <div className="stat">
+          <div className="stat-l">Untapped metros</div>
+          <div className="stat-v">{data ? untapped : "—"}</div>
+          <div className="stat-s">not contacted yet</div>
+        </div>
       </div>
 
-      <div className="bg-bg-card border border-border-subtle rounded-xl p-3 shadow-card">
-        <div className="flex items-center justify-between px-2 py-1.5">
-          <div className={labelClass}>National coverage</div>
-          <div className="flex items-center gap-3 text-[11px] text-txt-tertiary">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green inline-block" /> Interested</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber inline-block" /> Replied</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" /> Contacted</span>
+      <div className="card">
+        <div className="card-h">
+          <div>
+            <div className="card-t">National coverage</div>
+            <div className="card-s">
+              every lead pinned by city · color = best sentiment in that city
+            </div>
           </div>
         </div>
         {error ? (
-          <div className="h-[520px] flex items-center justify-center text-[13px] text-txt-tertiary">{error}</div>
+          <div
+            style={{
+              height: 340,
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              color: "var(--ink-3)",
+              background: "var(--surface-2)",
+            }}
+          >
+            {error}
+          </div>
         ) : (
-          <div ref={containerRef} className="h-[520px] w-full rounded-lg overflow-hidden bg-bg-elevated" />
+          <div
+            id="coverage-map"
+            ref={containerRef}
+            style={{
+              height: 340,
+              borderRadius: 8,
+              overflow: "hidden",
+              background: "var(--surface-2)",
+            }}
+          />
         )}
+        <div className="map-legend">
+          <div className="map-legend-item">
+            <div className="legend-dot" style={{ background: "var(--green)" }} /> Has interested lead
+          </div>
+          <div className="map-legend-item">
+            <div className="legend-dot" style={{ background: "var(--amber)" }} /> Contacted, no reply yet
+          </div>
+          <div className="map-legend-item">
+            <div className="legend-dot" style={{ background: "var(--ink-3)" }} /> Not yet contacted
+          </div>
+        </div>
       </div>
     </div>
   );

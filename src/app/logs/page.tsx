@@ -2,18 +2,60 @@
 
 import { useEffect, useState, useRef } from "react";
 
+type ChipId = "all" | "errors" | "sends" | "ai";
+
+const CHIPS: { id: ChipId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "errors", label: "Errors only" },
+  { id: "sends", label: "Sends only" },
+  { id: "ai", label: "AI classify" },
+];
+
+function logClass(line: string) {
+  const l = line.toUpperCase();
+  if (l.includes("ERROR")) return "log-error";
+  if (l.includes("WARN") || l.includes("QUOTA") || l.includes("BLACKLIST")) return "log-warn";
+  if (l.includes("SCRAPER") || l.includes("[SEND]") || l.includes("BREVO") || l.includes("SENT") || l.includes("SUCCESS") || l.includes("COMPLETE")) return "log-success";
+  if (l.includes("GROQ") || l.includes("[AI]") || l.includes("CLASSIF")) return "log-ai";
+  return "log-info";
+}
+
+function matchesChip(line: string, chip: ChipId) {
+  const l = line.toUpperCase();
+  switch (chip) {
+    case "errors":
+      return l.includes("ERROR");
+    case "sends":
+      return l.includes("[SEND]") || l.includes("BREVO") || l.includes("SENT");
+    case "ai":
+      return l.includes("GROQ") || l.includes("[AI]") || l.includes("CLASSIF");
+    default:
+      return true;
+  }
+}
+
+function splitTime(line: string): { time: string; msg: string } {
+  // Lines are formatted like "HH:MM:SS message" (8 char time + space).
+  const m = line.match(/^(\d{2}:\d{2}:\d{2})\s+(.*)$/);
+  if (m) return { time: m[1], msg: m[2] };
+  return { time: "", msg: line };
+}
+
 export default function LogsPage() {
   const [lines, setLines] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
+  const [chip, setChip] = useState<ChipId>("all");
   const [paused, setPaused] = useState(false);
+  const [live, setLive] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const es = new EventSource("/api/logs/stream");
+    es.onopen = () => setLive(true);
     es.onmessage = (e) => {
       const { line } = JSON.parse(e.data);
       setLines((prev) => [...prev.slice(-500), line]);
     };
+    es.onerror = () => setLive(false);
     return () => es.close();
   }, []);
 
@@ -23,72 +65,56 @@ export default function LogsPage() {
     }
   }, [lines, paused]);
 
-  function logColor(line: string) {
-    if (line.includes("ERROR")) return "text-red";
-    if (line.includes("SCRAPER")) return "text-green";
-    if (line.includes("GROQ") || line.includes("BREVO")) return "text-accent";
-    if (line.includes("IMAP")) return "text-amber";
-    if (line.includes("SYSTEM")) return "text-txt-secondary";
-    return "text-txt-tertiary";
-  }
-
-  const filtered = filter
-    ? lines.filter((l) => l.toUpperCase().includes(filter.toUpperCase()))
-    : lines;
+  const filtered = lines.filter((l) => matchesChip(l, chip));
 
   return (
-    <div className="bg-bg-card border border-border-subtle rounded-xl shadow-card overflow-hidden">
-      <div className="flex justify-between items-center p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-green animate-pulse" />
-            <span className="text-[10px] font-medium text-txt-muted uppercase tracking-widest">Live system logs</span>
-          </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-2.5 py-1.5 bg-bg-elevated border border-border rounded-lg text-[11px] text-txt-secondary focus:outline-none focus:border-accent/50"
-          >
-            <option value="">All</option>
-            <option value="SCRAPER">Scraper</option>
-            <option value="GROQ">Groq</option>
-            <option value="BREVO">Brevo</option>
-            <option value="IMAP">IMAP</option>
-            <option value="SYSTEM">System</option>
-            <option value="ERROR">Errors</option>
-          </select>
+    <div className="page" id="page-logs">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div className="sub-pills">
+          {CHIPS.map((c) => (
+            <div
+              key={c.id}
+              className={`sp${chip === c.id ? " active" : ""}`}
+              onClick={() => setChip(c.id)}
+            >
+              {c.label}
+            </div>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "inline-flex", gap: 6 }}>
           <button
+            className="btn-ghost"
+            style={{ fontSize: 11 }}
+            onClick={() => setPaused((p) => !p)}
+          >
+            <i className={`ti ${paused ? "ti-player-play" : "ti-player-pause"}`} />
+            {paused ? "Resume" : "Pause"}
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ fontSize: 11 }}
             onClick={() => setLines([])}
-            className="px-3 py-1.5 text-[11px] bg-bg-elevated border border-border rounded-lg text-txt-secondary hover:bg-bg-card hover:text-txt-primary transition-colors"
           >
-            Clear display
+            <i className="ti ti-trash" /> Clear
           </button>
-          <button
-            onClick={() => setPaused(!paused)}
-            className={`px-3 py-1.5 text-[11px] border rounded-lg transition-colors ${
-              paused
-                ? "border-amber/30 bg-amber-surface text-amber"
-                : "border-border bg-bg-elevated text-txt-secondary hover:bg-bg-card"
-            }`}
-          >
-            {paused ? "Resume" : "Pause scroll"}
-          </button>
-          <span className="text-[10px] text-txt-muted font-mono">1s refresh</span>
         </div>
       </div>
 
-      <div ref={logRef} className="max-h-[calc(100vh-230px)] overflow-y-auto p-1 bg-bg-raised">
-        {filtered.length === 0 ? (
-          <div className="text-[13px] text-txt-muted text-center py-12">No log entries yet. Run the finder or sync inbox to generate logs.</div>
-        ) : (
-          filtered.map((line, i) => (
-            <div key={i} className="text-[12px] font-mono py-1.5 px-3 flex gap-4 hover:bg-bg-elevated/40 rounded transition-colors leading-relaxed">
-              <span className="text-txt-muted shrink-0 select-none">{line.slice(0, 8)}</span>
-              <span className={logColor(line)}>{line.slice(10)}</span>
+      <div className="log-box" id="log-box" ref={logRef}>
+        {filtered.map((line, i) => {
+          const { time, msg } = splitTime(line);
+          return (
+            <div className="log-line" key={i}>
+              {time && <span className="log-time">{time}</span>}
+              <span className={logClass(line)}>{msg}</span>
             </div>
-          ))
+          );
+        })}
+        {live && !paused && (
+          <div className="log-line">
+            <span className="log-time log-info">waiting for next run </span>
+            <span className="log-cursor" />
+          </div>
         )}
       </div>
     </div>

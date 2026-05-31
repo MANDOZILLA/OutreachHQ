@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { IconCheck } from "@tabler/icons-react";
+import { useToast } from "@/components/Toast";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then(setSettings);
@@ -24,104 +25,176 @@ export default function SettingsPage() {
       body: JSON.stringify(settings),
     });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    toast("Settings saved");
   }
 
-  const fieldClass = "px-3.5 py-2.5 bg-bg-elevated border border-border rounded-lg text-[13px] text-txt-primary focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all w-full";
-  const labelClass = "text-[10px] font-medium text-txt-muted uppercase tracking-widest";
-
   const testMode = settings.TEST_MODE === "true";
+  const connected = (key: string) => Boolean(settings[key]);
 
   return (
-    <div className="space-y-3 max-w-2xl">
-      <div className={`bg-bg-card border rounded-xl p-5 shadow-card ${testMode ? "border-amber/40" : "border-border-subtle"}`}>
-        <div className="flex items-center justify-between mb-4">
-          <div className={labelClass}>Test mode</div>
-          <button
-            onClick={() => update("TEST_MODE", testMode ? "false" : "true")}
-            className={`w-9 h-5 rounded-full relative cursor-pointer transition-all duration-200 shrink-0 ${
-              testMode ? "bg-amber shadow-[0_0_8px_rgba(245,158,11,0.4)]" : "bg-bg-elevated border border-border-strong"
-            }`}
-          >
-            <span className={`absolute w-3.5 h-3.5 rounded-full top-[3px] transition-all duration-200 ${
-              testMode ? "right-[3px] bg-white" : "left-[3px] bg-txt-muted"
-            }`} />
-          </button>
+    <div className="max-w-2xl">
+      <div className="set-group">
+        <div className="set-group-title">Send limits &amp; quota</div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Daily email limit</div>
+            <div className="set-sub">Brevo free tier cap · resets midnight UTC</div>
+          </div>
+          <input
+            className="set-input"
+            type="number"
+            value={settings.DAILY_EMAIL_LIMIT || ""}
+            onChange={(e) => update("DAILY_EMAIL_LIMIT", e.target.value)}
+          />
         </div>
-        {testMode ? (
-          <>
-            <div className="text-[12px] text-amber mb-3">All outgoing emails will be sent to the test address below instead of real leads.</div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Test email recipient</label>
-              <input
-                type="email"
-                value={settings.TEST_EMAIL || ""}
-                onChange={(e) => update("TEST_EMAIL", e.target.value)}
-                placeholder="you@gmail.com"
-                className={fieldClass}
-              />
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Min lead score to email</div>
+            <div className="set-sub">Leads below this score are skipped</div>
+          </div>
+          <input
+            className="set-input"
+            type="number"
+            value={settings.MIN_SCORE_TO_EMAIL || ""}
+            onChange={(e) => update("MIN_SCORE_TO_EMAIL", e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="set-group">
+        <div className="set-group-title">Sender identity</div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Sender name</div>
+            <div className="set-sub">Display name on outgoing email</div>
+          </div>
+          <input
+            className="set-input"
+            type="text"
+            value={settings.SENDER_NAME || ""}
+            onChange={(e) => update("SENDER_NAME", e.target.value)}
+            style={{ width: 160 }}
+          />
+        </div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Sender email</div>
+            <div className="set-sub">From address on outgoing email</div>
+          </div>
+          <input
+            className="set-input"
+            type="email"
+            value={settings.SENDER_EMAIL || ""}
+            onChange={(e) => update("SENDER_EMAIL", e.target.value)}
+            style={{ width: 200 }}
+          />
+        </div>
+      </div>
+
+      <div className="set-group">
+        <div className="set-group-title">AI &amp; automation</div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Test mode</div>
+            <div className="set-sub">Redirect all sends to a test address instead of real leads</div>
+          </div>
+          <button
+            className={`toggle ${testMode ? "on" : ""}`}
+            onClick={() => update("TEST_MODE", testMode ? "false" : "true")}
+            aria-pressed={testMode}
+          />
+        </div>
+        {testMode && (
+          <div className="set-row">
+            <div>
+              <div className="set-lbl">Test email recipient</div>
+              <div className="set-sub">Where redirected emails are delivered</div>
             </div>
-          </>
-        ) : (
-          <div className="text-[12px] text-txt-tertiary">When enabled, emails are redirected to a test address instead of real leads. Use this to preview what gets sent.</div>
+            <input
+              className="set-input"
+              type="email"
+              value={settings.TEST_EMAIL || ""}
+              onChange={(e) => update("TEST_EMAIL", e.target.value)}
+              placeholder="you@gmail.com"
+              style={{ width: 200 }}
+            />
+          </div>
         )}
       </div>
 
-      <div className="bg-bg-card border border-border-subtle rounded-xl p-5 shadow-card">
-        <div className={`${labelClass} mb-4`}>Email settings</div>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { key: "SENDER_NAME", label: "Sender name", type: "text" },
-            { key: "SENDER_EMAIL", label: "Sender email", type: "email" },
-            { key: "DAILY_EMAIL_LIMIT", label: "Daily email limit", type: "number" },
-            { key: "MIN_SCORE_TO_EMAIL", label: "Min lead score to email", type: "number" },
-          ].map((f) => (
-            <div key={f.key} className="flex flex-col gap-1.5">
-              <label className={labelClass}>{f.label}</label>
-              <input
-                type={f.type}
-                value={settings[f.key] || ""}
-                onChange={(e) => update(f.key, e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-          ))}
+      <div className="set-group">
+        <div className="set-group-title">Connections</div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Brevo API key</div>
+            <div className="set-sub">Transactional email delivery</div>
+          </div>
+          {connected("BREVO_API_KEY") ? (
+            <span className="pill p-green">Connected</span>
+          ) : (
+            <input
+              className="set-input"
+              type="password"
+              value={settings.BREVO_API_KEY || ""}
+              onChange={(e) => update("BREVO_API_KEY", e.target.value)}
+              style={{ width: 200 }}
+            />
+          )}
+        </div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Groq API key</div>
+            <div className="set-sub">llama-3.3-70b · reply classification</div>
+          </div>
+          {connected("GROQ_API_KEY") ? (
+            <span className="pill p-green">Connected</span>
+          ) : (
+            <input
+              className="set-input"
+              type="password"
+              value={settings.GROQ_API_KEY || ""}
+              onChange={(e) => update("GROQ_API_KEY", e.target.value)}
+              style={{ width: 200 }}
+            />
+          )}
+        </div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">Gmail IMAP</div>
+            <div className="set-sub">Inbox polling for replies</div>
+          </div>
+          <input
+            className="set-input"
+            type="text"
+            value={settings.IMAP_EMAIL || ""}
+            onChange={(e) => update("IMAP_EMAIL", e.target.value)}
+            placeholder="you@gmail.com"
+            style={{ width: 200 }}
+          />
+        </div>
+        <div className="set-row">
+          <div>
+            <div className="set-lbl">IMAP app password</div>
+            <div className="set-sub">App-specific password for inbox access</div>
+          </div>
+          {connected("IMAP_PASSWORD") ? (
+            <span className="pill p-green">Connected</span>
+          ) : (
+            <input
+              className="set-input"
+              type="password"
+              value={settings.IMAP_PASSWORD || ""}
+              onChange={(e) => update("IMAP_PASSWORD", e.target.value)}
+              style={{ width: 200 }}
+            />
+          )}
         </div>
       </div>
 
-      <div className="bg-bg-card border border-border-subtle rounded-xl p-5 shadow-card">
-        <div className={`${labelClass} mb-4`}>API keys</div>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { key: "GROQ_API_KEY", label: "Groq API key", type: "password" },
-            { key: "BREVO_API_KEY", label: "Brevo API key", type: "password" },
-            { key: "IMAP_EMAIL", label: "IMAP email", type: "text" },
-            { key: "IMAP_PASSWORD", label: "IMAP app password", type: "password" },
-          ].map((f) => (
-            <div key={f.key} className="flex flex-col gap-1.5">
-              <label className={labelClass}>{f.label}</label>
-              <input
-                type={f.type}
-                value={settings[f.key] || ""}
-                onChange={(e) => update(f.key, e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-          ))}
-        </div>
-        <button
-          onClick={save}
-          disabled={saving}
-          className={`mt-5 border-none rounded-lg px-4 py-2.5 text-[12px] font-medium cursor-pointer flex items-center gap-2 transition-all disabled:opacity-40 ${
-            saved
-              ? "bg-green text-white"
-              : "bg-accent text-white hover:bg-accent-hover shadow-glow"
-          }`}
-        >
-          {saved ? <><IconCheck size={13} /> Saved</> : saving ? "Saving..." : "Save settings"}
-        </button>
-      </div>
+      <button className="btn-green" onClick={save} disabled={saving}>
+        <IconCheck size={14} />
+        {saving ? "Saving..." : "Save settings"}
+      </button>
     </div>
   );
 }

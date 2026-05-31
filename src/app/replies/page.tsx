@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, tierColor } from "@/lib/utils";
+import { useToast } from "@/components/Toast";
 import {
   IconMapPin,
   IconMail,
@@ -13,6 +14,9 @@ import {
   IconArrowRight,
   IconSend,
   IconCheck,
+  IconThumbUp,
+  IconBan,
+  IconCalendar,
 } from "@tabler/icons-react";
 
 interface Lead {
@@ -73,14 +77,29 @@ function hookBg(hookType: string) {
   return "bg-amber-surface";
 }
 
+type ColumnKey = "interested" | "needs_info" | "not_interested";
+
+const COLUMNS: Array<{
+  key: ColumnKey;
+  label: string;
+  color: string;
+  icon: typeof IconThumbUp;
+  sentClass: string;
+  sentIcon: typeof IconThumbUp;
+}> = [
+  { key: "interested", label: "Interested", color: "var(--green-2)", icon: IconThumbUp, sentClass: "sent-interested", sentIcon: IconThumbUp },
+  { key: "needs_info", label: "Not now", color: "var(--amber)", icon: IconClock, sentClass: "sent-notnow", sentIcon: IconClock },
+  { key: "not_interested", label: "Hard no", color: "var(--red)", icon: IconBan, sentClass: "sent-hardno", sentIcon: IconBan },
+];
+
 export default function RepliesPage() {
+  const toast = useToast();
   const [grouped, setGrouped] = useState<Grouped>({ interested: [], needs_info: [], not_interested: [] });
   const [cities, setCities] = useState<Array<{ city: string }>>([]);
   const [hooks, setHooks] = useState<Array<{ hook_type: string }>>([]);
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [hook, setHook] = useState("");
-  const [dragId, setDragId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Lead | null>(null);
   const [showEmail, setShowEmail] = useState(false);
   const [showReply, setShowReply] = useState(false);
@@ -103,22 +122,42 @@ export default function RepliesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleDrop(newStatus: string) {
-    if (dragId === null) return;
-    await fetch(`/api/leads/${dragId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    setDragId(null);
-    load();
+  function openLead(lead: Lead) {
+    setSelected(lead);
+    setShowEmail(false);
+    setShowReply(false);
+    setReplyText("");
+    setSent(false);
+    setSendError("");
   }
 
-  const columns = [
-    { key: "interested", label: "Interested", accent: "border-l-2 border-l-green", dot: "bg-green" },
-    { key: "needs_info", label: "Needs info", accent: "border-l-2 border-l-amber", dot: "bg-amber" },
-    { key: "not_interested", label: "Not interested", accent: "", dot: "bg-txt-muted" },
-  ] as const;
+  async function markWon(lead: Lead) {
+    try {
+      await fetch(`/api/leads/${lead.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "interested" }),
+      });
+      toast(`${lead.name} marked as won`);
+      load();
+    } catch {
+      toast("Failed to update");
+    }
+  }
+
+  async function snooze(lead: Lead) {
+    try {
+      await fetch(`/api/leads/${lead.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "needs_info" }),
+      });
+      toast(`${lead.name} snoozed`);
+      load();
+    } catch {
+      toast("Failed to update");
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -148,51 +187,78 @@ export default function RepliesPage() {
         </select>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {columns.map((col) => {
-          const items = grouped[col.key];
+      <div className="flex items-center justify-between">
+        <div style={{ fontSize: "11.5px", color: "var(--ink-4)", display: "flex", alignItems: "center", gap: "7px" }}>
+          <span className="ai-tag">AI</span>
+          Replies auto-classified by Groq on IMAP ingest · sequences auto-pause on any reply
+        </div>
+      </div>
+
+      <div className="kanban">
+        {COLUMNS.map((col) => {
+          const items = grouped[col.key] || [];
+          const ColIcon = col.icon;
+          const isHardNo = col.key === "not_interested";
           return (
-            <div
-              key={col.key}
-              className="bg-bg-raised rounded-xl p-3 min-h-[200px]"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDrop(col.key)}
-            >
-              <div className="flex items-center justify-between mb-3 px-1">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${col.dot}`} />
-                  <span className="text-[12px] font-medium text-txt-primary">{col.label}</span>
+            <div key={col.key} className="kol">
+              <div className="kol-head">
+                <div className="kol-title" style={{ color: col.color }}>
+                  <ColIcon size={14} />
+                  {col.label}
+                  <span className="kol-count">{items.length}</span>
                 </div>
-                <span className="text-[11px] font-mono text-txt-muted bg-bg-elevated border border-border-subtle rounded-md px-2 py-0.5">
-                  {items.length}
-                </span>
               </div>
-              <div className="space-y-2">
-                {items.map((lead) => (
-                  <div
-                    key={lead.id}
-                    draggable
-                    onDragStart={() => setDragId(lead.id)}
-                    onClick={() => { setSelected(lead); setShowEmail(false); setShowReply(false); setReplyText(""); setSent(false); setSendError(""); }}
-                    className={`bg-bg-card border border-border-subtle rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border-strong transition-all duration-150 ${col.accent} ${col.accent ? "rounded-l-none" : ""}`}
-                  >
-                    <div className="text-[13px] font-medium text-txt-primary mb-1">{lead.name}</div>
-                    <div className="text-[11px] text-txt-tertiary mb-2">
-                      {lead.city} · {lead.price_level || "$$"} · ★ {lead.rating?.toFixed(1) || "—"}
-                    </div>
-                    <div className="text-[11px] text-txt-secondary border-l-2 border-border-strong pl-2 mb-2.5 leading-relaxed">
-                      {lead.hook_text || lead.hook_type || "—"}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-txt-muted font-mono">{timeAgo(lead.replied_at)}</span>
-                      {lead.opted_out ? (
-                        <span className="text-[10px] text-txt-muted">Opted out</span>
-                      ) : (
-                        <span className="text-[11px] text-accent">View →</span>
+              <div className="kol-body">
+                {items.map((lead) => {
+                  const SentIcon = col.sentIcon;
+                  return (
+                    <div key={lead.id} className="kcard" onClick={() => openLead(lead)}>
+                      <div className="kcard-top">
+                        <div className="kcard-name">{lead.name}</div>
+                        <span className={`sent-badge ${col.sentClass}`}>
+                          <SentIcon size={11} />
+                        </span>
+                      </div>
+                      <div
+                        className="kcard-snippet"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {lead.reply_text || lead.hook_text || "—"}
+                      </div>
+                      <div className="kcard-foot">
+                        {isHardNo ? (
+                          <span className="pill p-red">auto-blacklisted</span>
+                        ) : (
+                          <span className={`pill ${tierColor(lead.tier)}`}>
+                            {lead.score} {lead.tier} · {lead.city}
+                          </span>
+                        )}
+                        <span className="kcard-time">{timeAgo(lead.replied_at)}</span>
+                      </div>
+                      {!isHardNo && (
+                        <div className="kcard-actions" onClick={(e) => e.stopPropagation()}>
+                          <div className="kc-btn go" onClick={() => openLead(lead)}>
+                            <IconSend size={11} /> Reply
+                          </div>
+                          {col.key === "interested" ? (
+                            <div className="kc-btn" onClick={() => markWon(lead)}>
+                              <IconCheck size={11} /> Won
+                            </div>
+                          ) : (
+                            <div className="kc-btn" onClick={() => snooze(lead)}>
+                              <IconCalendar size={11} /> Snooze
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {items.length === 0 && (
                   <div className="text-[12px] text-txt-muted text-center py-8">No leads</div>
                 )}
@@ -304,6 +370,7 @@ export default function RepliesPage() {
                         const data = await res.json();
                         if (data.ok) {
                           setSent(true);
+                          toast(`Reply sent to ${selected.name}`);
                           setTimeout(() => {
                             setSent(false);
                             setShowReply(false);
