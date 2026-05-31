@@ -13,9 +13,9 @@ export function timeAgo(dateStr: string | null): string {
 
 export function tierColor(tier: string) {
   switch (tier?.toLowerCase()) {
-    case "hot": return "p-red";
+    case "hot": return "p-green";
     case "warm": return "p-amber";
-    case "cold": return "p-blue";
+    case "cold": return "p-gray";
     default: return "p-gray";
   }
 }
